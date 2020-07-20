@@ -66,8 +66,6 @@ def infer_and_evaluate(test_set, model_path, use_cuda=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # parser.add_argument('--downloadTestSet', default=None, type=str, required=True)
-    # parser.add_argument('--downloadModel', default=None, type=str, required=True)
     parser.add_argument('--test_path', default=None, type=str, required=True)
     parser.add_argument('--model_path', default=None, type=str, required=True)
 
