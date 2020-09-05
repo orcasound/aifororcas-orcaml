@@ -7,6 +7,7 @@ import subprocess
 import shutil
 import gzip
 import tarfile
+import pandas as pd
 
 def print_help():
     """
@@ -61,8 +62,12 @@ def download_unzip_and_combine(test_dataset_paths, test_data_download_location, 
         tsv_file = os.path.join(test_data_download_location, "test.tsv")
     else:
         tsv_file = os.path.join(test_data_download_location, "train.tsv")
+        
+    dev_tsv_file = os.path.join(test_data_download_location, "dev.tsv")
     with open(tsv_file, "w") as outfile:
-        for extracted_location in local_extracted_locations:
+        for folder_num in range(0, len(local_extracted_locations)):
+            extracted_location = local_extracted_locations[folder_num]
+
             inner_folder = os.listdir(extracted_location)[0]
             sub_wav_dir = os.path.join(extracted_location, inner_folder, "wav")
             for filename in os.listdir(sub_wav_dir):
@@ -74,8 +79,20 @@ def download_unzip_and_combine(test_dataset_paths, test_data_download_location, 
                 sub_test_tsv = os.path.join(extracted_location, inner_folder, "test.tsv")
             else:
                 sub_test_tsv = os.path.join(extracted_location, inner_folder, "train.tsv")
-            with open(sub_test_tsv, "r") as infile:
-                outfile.write(infile.read())
+
+            # for all but the first folder, skip the header line and only pick out the first 6 columns
+            df = pd.read_csv(sub_test_tsv,sep='\t')
+            relevant_columns = df.iloc[:, :6]
+            relevant_columns.to_csv(outfile, sep='\t', header=(folder_num==0))
+
+            # write validation dataset
+            if not is_test:
+                sub_dev_tsv = os.path.join(extracted_location, inner_folder, "dev.tsv")
+                if os.path.exists(sub_dev_tsv):
+                    df_dev = pd.read_csv(sub_dev_tsv,sep='\t')
+                    df_dev_columns = df_dev.iloc[:, :6]
+                    with open(dev_tsv_file, "a") as combined_dev_file:
+                        df_dev_columns.to_csv(combined_dev_file, sep='\t', header=(folder_num==0))
 
             # delete extracted location
             shutil.rmtree(extracted_location)
