@@ -2,6 +2,8 @@ import librosa
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+from tqdm import tqdm
 from scipy.io import wavfile
 from pathlib import Path
 from math import ceil
@@ -112,10 +114,11 @@ class AudioFileDataset(Dataset):
         assert get_mode in ['audio','spec','mel_spec', 'audio_orig_sr']
         self.sr, self.get_mode = sr, get_mode
         self.audio_files, self.segments, self.windows = {}, [], []
-        for wav_filename in self.df.wav_filename.unique():
+        wav_iterator = tqdm(self.df.wav_filename.unique())
+        for wav_filename in wav_iterator:
+            wav_iterator.set_description(wav_filename)
             wav_df = self.df[self.df['wav_filename']==wav_filename]
             wav_path = Path(wav_dir)/wav_filename
-            print("Loading file:",wav_filename)
             audio_file = AudioFile(wav_path,self.sr)
             audio_file.extend(self.min_window_s)
             start_times, durations = wav_df['start_time_s'], wav_df['duration_s']
