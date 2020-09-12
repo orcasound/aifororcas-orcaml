@@ -9,12 +9,6 @@ import gzip
 import tarfile
 import pandas as pd
 
-def print_help():
-    """
-
-    """
-
-    print("Please provide one or more of --test_data_download_location or --train_data_download_location")
 
 def aws_download(s3_path, local_dir):
     command = "aws --no-sign-request s3 cp " + s3_path + " " + local_dir
@@ -26,23 +20,22 @@ def aws_download(s3_path, local_dir):
         raise RuntimeError("{} does not exist".format(full_path_to_filename))
     return full_path_to_filename
 
-def unzip_and_extract(test_data_download_location, local_download_location):
+def unzip_and_extract(extract_dir, dataset_archive, clean_archive=True):
     # unzip file to folder
     # delete zip file after extraction
-    extracted_folder_name = os.path.basename(local_download_location).split(".tar.gz")[0]
-    extracted_folder_path = os.path.join(test_data_download_location, extracted_folder_name)
-    if local_download_location.endswith("tar.gz"):
-        tar = tarfile.open(local_download_location, "r:gz")
+    extracted_folder_name = os.path.basename(dataset_archive).split(".tar.gz")[0]
+    extracted_folder_path = os.path.join(extract_dir, extracted_folder_name)
+    if dataset_archive.endswith("tar.gz"):
+        tar = tarfile.open(dataset_archive, "r:gz")
         tar.extractall(path=extracted_folder_path)
         tar.close()
 
-    os.remove(local_download_location)
+    if clean_archive:
+        os.remove(dataset_archive)
+
     return extracted_folder_path
 
 def download_unzip_and_combine(test_dataset_paths, test_data_download_location, is_test = True):
-    """
-
-    """
 
     if os.path.exists(test_data_download_location):
         shutil.rmtree(test_data_download_location)
@@ -99,32 +92,34 @@ def download_unzip_and_combine(test_dataset_paths, test_data_download_location, 
 
     return test_data_download_location
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Download and combine dataset")
-    parser.add_argument("--test_data_download_location")
-    parser.add_argument("--train_data_download_location")
+    parser = argparse.ArgumentParser(description="Download Orcasound datasets. Prerequisite: Ensure awscli is setup & you can run 'aws s3 help'")
+    parser.add_argument("download_dir", type=str, help="Directory to save the extracted dataset(s)")
+    # parser.add_argument("dataset_type", type=str, help="Specify either (train/test)")
+    parser.add_argument("--only_train", default=False, action='store_true')
+    parser.add_argument("--only_test", default=False, action='store_true')
     args = parser.parse_args()
 
-    # 
-    if args.test_data_download_location is None and args.train_data_download_location is None:
-        print_help()
-        sys.exit(1)
-    
-    test_dataset_paths = [
+    combined_train_dataset = "s3://acoustic-sandbox/labeled-data/detection/train/TrainDataLatest_PodCastAllRounds.tar.gz"   
+    test_datasets = [
         "s3://acoustic-sandbox/labeled-data/detection/test/OS_SVeirs_07_05_2019_08_24_00.tar.gz",
         "s3://acoustic-sandbox/labeled-data/detection/test/OrcasoundLab09272017_Test.tar.gz"
     ]
-    if args.test_data_download_location:
-        final_path = download_unzip_and_combine(test_dataset_paths, args.test_data_download_location)
+    # individual_train_datasets = [
+    #     "s3://acoustic-sandbox/labeled-data/detection/train/WHOIS09222019_PodCastRound1.tar.gz",
+    #     "s3://acoustic-sandbox/labeled-data/detection/train/OrcasoundLab07052019_PodCastRound2.tar.gz",
+    #     "s3://acoustic-sandbox/labeled-data/detection/train/OrcasoundLab09272017_PodCastRound3.tar.gz"
+    # ]
+
+    if not args.only_train:
+        final_path = download_unzip_and_combine(
+            test_datasets, os.path.join(args.download_dir, "TestDataLatest_PodCastAllRounds")
+            )
         print("Test data extracted to {}".format(final_path))
 
-    
-    train_dataset_paths = [
-        "s3://acoustic-sandbox/labeled-data/detection/train/WHOIS09222019_PodCastRound1.tar.gz",
-        "s3://acoustic-sandbox/labeled-data/detection/train/OrcasoundLab07052019_PodCastRound2.tar.gz",
-        "s3://acoustic-sandbox/labeled-data/detection/train/OrcasoundLab09272017_PodCastRound3.tar.gz"
-    ]
-    if args.train_data_download_location:
-        final_path = download_unzip_and_combine(train_dataset_paths, args.train_data_download_location, False)
+    if not args.only_test:
+        dataset_archive = aws_download(combined_train_dataset, args.download_dir)
+        final_path = unzip_and_extract(args.download_dir, dataset_archive)
         print("Train data extracted to {}".format(final_path))
-    
+
