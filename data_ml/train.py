@@ -147,7 +147,7 @@ if __name__ == "__main__":
     parser.add_argument('-dataPath', default=None, type=str, required=True)
     parser.add_argument('-model', default='AudioSet_fc_all', type=str, required=True)
     # select model, lr, lr plateau params
-    parser.add_argument('-lr', default=0.001, type=float, required=False)
+    parser.add_argument('-lr', default=0.0005, type=float, required=False)
     parser.add_argument('-lrPlateauSchedule', default="2,0.05,0.5", type=str, required=False)
     parser.add_argument('-batchSize', default=32, type=int, required=False)
     parser.add_argument('-minWindowS', default=params.WINDOW_S, type=float, required=False)
