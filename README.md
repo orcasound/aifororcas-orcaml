@@ -4,11 +4,11 @@ The implementation here focuses on binary detection of *orca calls* (that are in
 We change the audio-preprocessing front-end to better match this task & fine-tune the fully-connected layers and classification head of the [AudioSet model](https://github.com/tensorflow/models/tree/master/research/audioset), specifically a [PyTorch port of the model/weights](https://github.com/tcvrick/audioset-vggish-tensorflow-to-pytorch). The model is generating *local predictions* on a fixed window size of ~2.45s. Sampling and aggregation strategies for more *global detection* at minute/hourly/day-wise time scale would be a welcome contribution (helpful for a real-time detection pipeline, or processing 2-3 months of historical data from different hydrophone nodes).
 
 > 1. The model was bootstrapped with scraped open data from WHOI Marine Mammal Database (see `src.scraper` and `notebooks/DataPreparation` for details)  
-> 2. Labelled data in live conditions from Orcasound hydrophones has subsequently been added using the [Pod.Cast tool](https://github.com/orcasound/orcalabel-podcast). (see [DataArchives](https://github.com/orcasound/orcadata/wiki/Pod.Cast-data-archive) for details)
+> 2. Labelled data in live conditions from Orcasound hydrophones has subsequently been added using the [Pod.Cast tool](https://github.com/orcasound/orcalabel-podcast) by prioritizing labelling in an [active-learning-like](https://en.wikipedia.org/wiki/Active_learning_(machine_learning)) fashion after the initial bootstrap. ([DataArchives](https://github.com/orcasound/orcadata/wiki/Pod.Cast-data-archive) details on all datasets)
 > 3. The mel spectrogram generation is changed to better suit this task (for details on choice of filterbank see `notebooks/DataPreparation`. Implementation is in `data_ml/src.params` and `data_ml/src.dataloader`)
 > 4. Given limited domain data, and need for robustness to different acoustic conditions (hydrophone nodes, SNR, noise/disturbances) in live conditions, the baseline uses transfer learning.  
 > 5. Data augmentation in the style of [SpecAug](https://arxiv.org/pdf/1904.08779.pdf) is also implemented, that acts as a helpful form of regularization 
-> 6. The Pod.Cast website aims to generate labelled data in live conditions, with candidates for annotation created in an [active-learning-like](https://en.wikipedia.org/wiki/Active_learning_(machine_learning)) fashion. The goal is to generate more relevant labelled data through multiple rounds of the above feedback loop bootstrapped by the classifier 
+
 
 # Directory structure:
 
@@ -31,7 +31,7 @@ See documentation at [DataArchives](https://github.com/orcasound/orcadata/wiki/P
 
 ## Download datasets
 
-This is a convenience script to download & uncompress latest combined training & test datasets. 
+This is a convenience script to download & uncompress latest combined training (Round1,2,3 etc.) & test datasets. 
 ```
 python data_ml/tools/download_datasets.py <LOCATION> (--only_train/--only_test)
 ```
