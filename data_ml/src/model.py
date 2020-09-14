@@ -78,7 +78,7 @@ class VGGish(nn.Module):
     correction for flattening in the fully-connected layers.
     """
 
-    def __init__(self,num_classes=2):
+    def __init__(self, num_classes=2):
         super(VGGish, self).__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 64, 3, stride=1, padding=1),
@@ -119,7 +119,8 @@ class VGGish(nn.Module):
 
 
 # load_model()
-def get_model_or_checkpoint(model_name,model_path,num_classes=2,epoch=None,nGPU=params.N_GPU,use_cuda=True):
+def get_model_or_checkpoint(model_name, model_path, num_classes=2,
+                            epoch=None,nGPU=params.N_GPU,use_cuda=True, average_models=False):
     if model_name=="ResNet_slim":
         model = ResNet_slim(1, 32, 32, 64, 128, 64, num_classes)
     elif "AudioSet" in model_name:
@@ -134,22 +135,37 @@ def get_model_or_checkpoint(model_name,model_path,num_classes=2,epoch=None,nGPU=
         key=lambda x: int(x.rsplit('_',1)[-1]),
         reverse=True
         )
-    if len(checkpoints)>0:
-        # load saved model
-        if epoch is None: checkpoint = checkpoints[0] 
+    if not average_models:
+        if len(checkpoints)>0:
+            # load saved model
+            if epoch is None: checkpoint = checkpoints[0] 
+            else:
+                for ckp in checkpoints:
+                    if int(ckp.rsplit('_',1)[-1])==epoch:
+                        checkpoint = ckp
+            
+            if use_cuda:
+                model.load_state_dict(torch.load(checkpoint))
+            else:
+                model.load_state_dict(torch.load(checkpoint, map_location=torch.device('cpu')))
+            
+            curr_epoch = int(checkpoint.rsplit('_',1)[1])
+            print("Loaded checkpoint: {}".format(checkpoint))
         else:
-            for ckp in checkpoints:
-                if int(ckp.rsplit('_',1)[-1])==epoch:
-                    checkpoint = ckp
-        
-        if use_cuda:
-            model.load_state_dict(torch.load(checkpoint))
-        else:
-            model.load_state_dict(torch.load(checkpoint, map_location=torch.device('cpu')))
-        
-        curr_epoch = int(checkpoint.rsplit('_',1)[1])
-        print("Loaded checkpoint: {}".format(checkpoint))
+            curr_epoch = 0
     else:
+        ckp_list = []
+        print("Averaging", len(checkpoints), "checkpoints")
+        print(checkpoints)
+        for checkpoint in checkpoints:
+            ckp_list.append(torch.load(checkpoint))    
+        averaged_ckp = ckp_list[0]
+        n = len(ckp_list)
+        for key in averaged_ckp:
+            for ckp in ckp_list[1:]:
+                averaged_ckp[key] += ckp[key]
+            averaged_ckp[key] = averaged_ckp[key] / n
+        model.load_state_dict(averaged_ckp)
         curr_epoch = 0
     
     return model, curr_epoch
@@ -176,7 +192,11 @@ def get_finetune_model(model_name,model_path,finetune_checkpoint,nGPU=params.N_G
         _unfreeze_nn_params(net.module.fc_class)
     elif model_name == "AudioSet_fc_all":
         print("Unfreezing fc + fc_class layers")
-        for m in [net.module.fc,net.module.fc_class]:
+        for m in [net.module.fc, net.module.fc_class]:
+            _unfreeze_nn_params(m)
+    elif model_name == "AudioSet_finetune_all":
+        print("Unfreezing all layers")
+        for m in [net.module.features, net.module.fc, net.module.fc_class]:
             _unfreeze_nn_params(m)
 
     if use_cuda:
@@ -209,11 +229,13 @@ class PredScorer(object):
     def reset(self):
         self.preds_list = []
         self.targets_list = []
+        self.scores_list = []
         self.F1_global = 0
     
-    def update(self,targets,preds):
+    def update(self,targets,preds,scores):
         for pred in preds.cpu().numpy(): self.preds_list.append(pred)
         for target in targets.cpu().numpy(): self.targets_list.append(target)
+        for score in torch.exp(scores.cpu()).numpy(): self.scores_list.append(score)
         self.F1_global = metrics.f1_score(self.targets_list,self.preds_list)
         self.accuracy = metrics.accuracy_score(self.targets_list,self.preds_list)
     
