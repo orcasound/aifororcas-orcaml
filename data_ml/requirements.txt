@@ -8,9 +8,10 @@ matplotlib
 m3u8
 click
 librosa==0.6.3
-torch==1.2.0
-torchvision==0.4.2
+torch==1.4.0
+torchvision==0.5.0
 scikit-learn
+tensorboard
 numpy
 numba==0.48
 # ffmpeg windows build: https://ffmpeg.zeranoe.com/builds/win64/static/ffmpeg-4.1.4-win64-static.zip

@@ -99,9 +99,10 @@ class AudioFileDataset(Dataset):
 
     Internally indexes AudioFiles and maintains list of segments and windows used to index into them. Also extends audio files < min_window_s by repeating them. 
     """
-    def __init__(
-        self,wav_dir,tsv_file,min_window_s=params.WINDOW_S,max_window_s=params.WINDOW_S,
-        mean=None,invstd=None,sr=params.SAMPLE_RATE,get_mode='mel_spec',transform=None):
+    def __init__(self, wav_dir, tsv_file, 
+        min_window_s=params.WINDOW_S, max_window_s=params.WINDOW_S, hop_s=0.0,
+        mean=None, invstd=None, sr=params.SAMPLE_RATE, 
+        get_mode='mel_spec', transform=None, jitter=False, random_seed=42):
         # wav_dir, tsv_file, max_window_s
         """
         load all wavfiles into memory (data is not too large so can get away with this, else use memmap option while reading wavfiles)
@@ -109,10 +110,17 @@ class AudioFileDataset(Dataset):
         self.df = pd.read_csv(tsv_file,sep='\t')
         self.max_window_s = max_window_s
         self.min_window_s = min_window_s
+        if hop_s == 0.0:
+            self.hop_s = self.min_window_s
+        else:
+            self.hop_s = hop_s
         self.transform = transform
-        
+        self.jitter = jitter
+        self.random_seed = random_seed
+        np.random.seed(self.random_seed)
         assert get_mode in ['audio','spec','mel_spec', 'audio_orig_sr']
         self.sr, self.get_mode = sr, get_mode
+
         self.audio_files, self.segments, self.windows = {}, [], []
         wav_iterator = tqdm(self.df.wav_filename.unique())
         for wav_filename in wav_iterator:
@@ -124,7 +132,8 @@ class AudioFileDataset(Dataset):
             start_times, durations = wav_df['start_time_s'], wav_df['duration_s']
             wav_segments, wav_windows = self.index_audio_file(
                 audio_file,start_times,durations,
-                self.min_window_s, self.max_window_s
+                self.min_window_s, self.max_window_s,
+                hop_s=self.hop_s
                 )
             self.segments.extend(wav_segments)
             self.windows.extend(wav_windows)
@@ -160,7 +169,7 @@ class AudioFileDataset(Dataset):
 
         return mean, invstd
         
-    def index_audio_file(self,audio_file,start_times,durations,min_window_s,max_window_s):
+    def index_audio_file(self,audio_file,start_times,durations,min_window_s,max_window_s, hop_s=0.0):
         """
         Given an audio_file and sorted annotations (start_times, durations), creates sequential segments and windows of postive and negative examples.
         First, create sequential segments of min_window_s
@@ -180,12 +189,14 @@ class AudioFileDataset(Dataset):
         
         # segments on and between annotations
         segments = self.segments_from_annotations(
-            audio_file,start_times,durations,min_window_s
+            audio_file, start_times, durations, min_window_s
             )
         # split each segment into windows
         windows = []
         for segment in segments:
-            windows.extend(self.split_segment_in_windows(audio_file,segment,max_window_s))
+            windows.extend(
+                self.split_segment_in_windows(audio_file, segment, max_window_s, hop_s)
+                )
         
         return segments, windows
     
@@ -194,7 +205,15 @@ class AudioFileDataset(Dataset):
     
     def __getitem__(self,index):
         start_idx, end_idx, label, audio_file = self.windows[index]
-        data = audio_file.get_window(start_idx,end_idx,self.get_mode)
+        if self.jitter:
+            # perturb windows so each audio file is processed slightly differently each epoch
+            hop_idx = s_to_samples(self.hop_s, self.sr)
+            perturb_min = min(start_idx, hop_idx)
+            perturb_max = min(audio_file.nsamples - end_idx, hop_idx)
+            perturb_idx = np.random.randint(-perturb_min, perturb_max)
+            start_idx += perturb_idx
+            end_idx += perturb_idx
+        data = audio_file.get_window(start_idx, end_idx, self.get_mode)
         if (self.mean is not None) and (self.invstd is not None) and ('audio' not in self.get_mode):
             data -= self.mean
             data *= self.invstd 
@@ -234,13 +253,33 @@ class AudioFileDataset(Dataset):
             segments.append((curr_idx,nsamples,0,audio_file)) 
         return segments
     
-    def split_segment_in_windows(self,audio_file,segment,max_window_s):
-        # splits a segment (start,end,label,wav) into non-overlapping chunks of window_size
-        w = s_to_samples(max_window_s,audio_file.sr) 
-        si, ei, label, audio_file = segment
-        num_windows = len(range(si,ei))//w
-        if num_windows == 0: return [ segment ] # smaller than max
-        else: return [ (si+i*w,si+(i+1)*w,label,audio_file) for i in range(num_windows) ]
+    def split_segment_in_windows(self,audio_file,segment,max_window_s, hop_s=0.0):
+        """
+        Splits a segment (start, end, label, wav) into non-overlapping chunks of window_size
+
+        An example illustration with (len = 7, window = 3, hop = 1)
+        Samples:    - - - - - - -
+        Indexes:    0 1 2 3 4 5 6
+        Windows:    * * * * *          total = 5
+        Formula:    (len - window)/hop + 1
+        """
+        si, ei, label, audio_file = segment  # si, ei are sample indexes of the segment
+        w = s_to_samples(max_window_s, audio_file.sr) 
+        # if no hop specified, defaults to hop=window size i.e. non-overlapping windows
+        hop = s_to_samples(hop_s, audio_file.sr) if hop_s > 0.0 else w
+        num_windows = (len(range(si,ei)) - w) // hop + 1
+
+        if num_windows == 0:
+            return [segment]  # smaller than max
+        else:
+            windows_list = []
+            for i in range(num_windows):
+                start = si + i*hop
+                end = start + w
+                current_window = (start, end, label, audio_file)
+                #TODO@Akash: support some random jitter when splitting into windows
+                windows_list.append(current_window)
+            return windows_list
     
     def plot_for_debug(self,audio_fname,mode='windows'):
         plot_chunks, yi, sr = [], 0, self.audio_files[audio_fname].sr
@@ -259,7 +298,7 @@ class AudioFileDataset(Dataset):
 
 class AudioFileWindower(AudioFileDataset):
     def __init__(self,
-        audio_file_paths,window_s=params.WINDOW_S,mean=None,invstd=None,sr=params.SAMPLE_RATE,get_mode='mel_spec',transform=None):
+        audio_file_paths,window_s=params.WINDOW_S, hop_s=0.0, mean=None,invstd=None,sr=params.SAMPLE_RATE,get_mode='mel_spec',transform=None):
         """
         load all wavfiles into memory (data is not too large so can get away with this, else use memmap option while reading wavfiles)
         """
@@ -283,7 +322,7 @@ class AudioFileWindower(AudioFileDataset):
                 start_times, durations = [0.], [audio_file.duration]
                 wav_segments, wav_windows = self.index_audio_file(
                     audio_file,start_times,durations,
-                    self.window_s, self.window_s
+                    self.window_s, self.window_s, hop_s
                     )
                 self.segments.extend(wav_segments)
                 self.windows.extend(wav_windows)

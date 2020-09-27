@@ -207,15 +207,15 @@ if __name__ == "__main__":
         lr=args.lr
     )
 
-    # scheduler = lr_scheduler.CyclicLR(
-    #     optimizer, base_lr=1e-9, max_lr=1e-3, step_size_up=len(train_dataloader),
-    #     cycle_momentum=False
-    # )
-
-    lr_plateau_schedule = [ float(p) for p in args.lrPlateauSchedule.split(',') ]
-    scheduler = lr_scheduler.ReduceLROnPlateau(
-        optimizer, patience=lr_plateau_schedule[0], threshold=lr_plateau_schedule[1],factor=lr_plateau_schedule[2]
+    scheduler = lr_scheduler.CyclicLR(
+        optimizer, base_lr=1e-8, max_lr=1e-7, step_size_up=len(train_dataloader),
+        cycle_momentum=False, mode='exp_range', gamma=1.05
     )
+
+    # lr_plateau_schedule = [ float(p) for p in args.lrPlateauSchedule.split(',') ]
+    # scheduler = lr_scheduler.ReduceLROnPlateau(
+    #     optimizer, patience=lr_plateau_schedule[0], threshold=lr_plateau_schedule[1],factor=lr_plateau_schedule[2]
+    # )
 
     ## initialize logger
     writer = SummaryWriter(log_dir=runPath)
@@ -227,13 +227,13 @@ if __name__ == "__main__":
     iteration, logger = curr_epoch*len(train_dataloader), set_logger(runPath)
     for epoch in range(curr_epoch,args.numEpochs):
         iteration = train(iteration, train_dataloader, model,
-                            optimizer, records, print_freq, epoch, args.batchSize, logger, writer, scheduler=None)
+                            optimizer, records, print_freq, epoch, args.batchSize, logger, writer, scheduler=scheduler)
         message = "\n### Epoch {}, Avg training loss: {} ###\n".format(epoch,epoch_loss.avg)
         logger.info(message)
         epoch_loss.reset()
 
         validate(val_dataloader, model, iteration, epoch, writer, records, logger)
-        scheduler.step(epoch_loss.avg)
+        # scheduler.step(epoch_loss.avg)
         epoch_loss.reset()
         predscorer.reset()
 
