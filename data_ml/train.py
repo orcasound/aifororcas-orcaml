@@ -148,6 +148,7 @@ if __name__ == "__main__":
     parser.add_argument('-model', default='AudioSet_fc_all', type=str, required=True)
     # select model, lr, lr plateau params
     parser.add_argument('-lr', default=0.0005, type=float, required=False)
+    parser.add_argument('-lr_finder', default=False, action='store_true')
     parser.add_argument('-lrPlateauSchedule', default="2,0.05,0.5", type=str, required=False)
     parser.add_argument('-batchSize', default=32, type=int, required=False)
     parser.add_argument('-minWindowS', default=params.WINDOW_S, type=float, required=False)
@@ -207,15 +208,19 @@ if __name__ == "__main__":
         lr=args.lr
     )
 
-    scheduler = lr_scheduler.CyclicLR(
-        optimizer, base_lr=1e-8, max_lr=1e-7, step_size_up=len(train_dataloader),
-        cycle_momentum=False, mode='exp_range', gamma=1.05
-    )
+    # used for learning rate finding if lr_finder flag is passed 
+    if args.lr_finder:
+        step_scheduler = lr_scheduler.CyclicLR(
+            optimizer, base_lr=1e-8, max_lr=1e-7, step_size_up=len(train_dataloader),
+            cycle_momentum=False, mode='exp_range', gamma=1.05
+        )
+    else:
+        step_scheduler = None
 
-    # lr_plateau_schedule = [ float(p) for p in args.lrPlateauSchedule.split(',') ]
-    # scheduler = lr_scheduler.ReduceLROnPlateau(
-    #     optimizer, patience=lr_plateau_schedule[0], threshold=lr_plateau_schedule[1],factor=lr_plateau_schedule[2]
-    # )
+    lr_plateau_schedule = [ float(p) for p in args.lrPlateauSchedule.split(',') ]
+    scheduler = lr_scheduler.ReduceLROnPlateau(
+        optimizer, patience=lr_plateau_schedule[0], threshold=lr_plateau_schedule[1],factor=lr_plateau_schedule[2]
+    )
 
     ## initialize logger
     writer = SummaryWriter(log_dir=runPath)
@@ -227,13 +232,14 @@ if __name__ == "__main__":
     iteration, logger = curr_epoch*len(train_dataloader), set_logger(runPath)
     for epoch in range(curr_epoch,args.numEpochs):
         iteration = train(iteration, train_dataloader, model,
-                            optimizer, records, print_freq, epoch, args.batchSize, logger, writer, scheduler=scheduler)
+                            optimizer, records, print_freq, epoch, args.batchSize, logger, writer, scheduler=step_scheduler)
         message = "\n### Epoch {}, Avg training loss: {} ###\n".format(epoch,epoch_loss.avg)
         logger.info(message)
         epoch_loss.reset()
 
         validate(val_dataloader, model, iteration, epoch, writer, records, logger)
-        # scheduler.step(epoch_loss.avg)
+        if not args.lr_finder:
+            scheduler.step(epoch_loss.avg)
         epoch_loss.reset()
         predscorer.reset()
 

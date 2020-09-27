@@ -39,11 +39,16 @@ class AudioFile:
                 audio = audio[:,0]
 
             if sr != target_sr: # convert to a common sampling rate
-                print("Warning: Resampling file {} with SR: {}, dtype: {}".format(file_path,target_sr, audio.dtype))
+                print("Warning: Resampling file {} with SR: {}, dtype: {}".format(
+                    self.name, target_sr, audio.dtype)
+                )
                 self.audio_original = audio
                 self.sr_original = sr
+                og_directory = Path(file_path).parent / "original_{:.1f}_kHz".format(sr/1000.0)
+                wavfile.write(og_directory / self.name, self.sr_original, self.audio_original)
                 audio = librosa.core.resample(audio, sr, target_sr) 
-                # wavfile.write(file_path,target_sr,audio)
+                wavfile.write(file_path, target_sr, audio)
+                print("Overwritten file at {} and copied original to {}".format(file_path, og_directory))
             else:
                 self.audio_original = audio
                 self.sr_original = target_sr
