@@ -101,11 +101,13 @@ if __name__ == "__main__":
     parser.add_argument("--only_test", default=False, action='store_true')
     args = parser.parse_args()
 
-    combined_train_dataset = "s3://acoustic-sandbox/labeled-data/detection/train/TrainDataLatest_PodCastAllRounds_123567.tar.gz"   
-    test_datasets = [
-        "s3://acoustic-sandbox/labeled-data/detection/test/OS_SVeirs_07_05_2019_08_24_00.tar.gz",
-        "s3://acoustic-sandbox/labeled-data/detection/test/OrcasoundLab09272017_Test.tar.gz"
-    ]
+    combined_train_dataset = "s3://acoustic-sandbox/labeled-data/detection/train/TrainDataLatest_PodCastAllRounds_123567910.tar.gz"   
+    combined_test_dataset = "s3://acoustic-sandbox/labeled-data/detection/train/TestDataLatest_PodCastAllRounds_123.tar.gz"
+    
+    # test_datasets = [
+        # "s3://acoustic-sandbox/labeled-data/detection/test/OS_SVeirs_07_05_2019_08_24_00.tar.gz",
+        # "s3://acoustic-sandbox/labeled-data/detection/test/OrcasoundLab09272017_Test.tar.gz"
+    # ]
     # individual_train_datasets = [
     #     "s3://acoustic-sandbox/labeled-data/detection/train/WHOIS09222019_PodCastRound1.tar.gz",
     #     "s3://acoustic-sandbox/labeled-data/detection/train/OrcasoundLab07052019_PodCastRound2.tar.gz",
@@ -113,9 +115,8 @@ if __name__ == "__main__":
     # ]
 
     if not args.only_train:
-        final_path = download_unzip_and_combine(
-            test_datasets, os.path.join(args.download_dir, "TestDataLatest_PodCastAllRounds")
-            )
+        dataset_archive = aws_download(combined_test_dataset, args.download_dir)
+        final_path = unzip_and_extract(args.download_dir, dataset_archive)
         print("Test data extracted to {}".format(final_path))
 
     if not args.only_test:
